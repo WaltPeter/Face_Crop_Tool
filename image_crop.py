@@ -666,32 +666,48 @@ class Interface:
             s = " " * (10 - len(s)) + s 
             return s
 
+        # Show curent frame. 
         mat = np.ones((self._winsize,self._winsize,3), dtype=np.uint8) * 27 
-        try: 
+        try:  
             pt1 = (int((self._winsize-self.img.shape[1])/2), int((self._winsize-self.img.shape[0])/2)) 
             pt2 = (pt1[0] + self.img.shape[1], pt1[1] + self.img.shape[0])
             mat[pt1[1]:pt2[1], pt1[0]:pt2[0]] = self.img 
         except: pass  
+
+        # Show crop box. 
+        self.crop_tool.show_crop_box(mat, pt1, self.mouseHandler.x, self.mouseHandler.y, self.mouseHandler.click)
+
+        # Show buttons. 
         try: 
             for button in self.buttons: 
                 button.update_status()
                 button.construct_button(mat) 
         except: pass 
+
+        # Show cursor coordinate. 
         try: 
             cv2.putText(mat, _format_coor(), (self._winsize-90, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,100), 1) 
             cv2.putText(mat, self.image_handler.get_formatted_info(), (3, self._winsize-10), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,100), 1) 
         except: pass 
+
+        # Show menuTree. 
         try: 
             self.menuTree.update_status() 
             self.menuTree.construct_menu_tree(mat) 
         except: pass 
+
+        # Update crop box. 
         try: self.crop_tool.action(mat, pt1, self.mouseHandler.x, self.mouseHandler.y, self.mouseHandler.click) 
         except: pass 
+
+        # Show notifier. 
         try: 
             self.notifier.update_status(self.mouseHandler.x, self.mouseHandler.y, self.mouseHandler.click)
             self.notifier.construct_notifiers(mat)
         except: pass 
+
+        # Show dialog. 
         try: 
             self.dialog.update_status() 
             self.dialog.construct_dialog(mat) 
@@ -911,6 +927,8 @@ class Crop_Tool:
             if self.path is not None and self.status >= 0 and self.status <= 8: 
                 if self.path in self.bndboxes: self._bnd_padding() 
         if not click: self._mouseup()
+
+    def show_crop_box(self, mat, padding, x, y, click=False): 
         self._draw_bnd(mat, padding)  
         self._draw_8_points(mat, padding, x, y, click) 
 
