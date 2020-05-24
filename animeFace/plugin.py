@@ -171,6 +171,7 @@ class Plugin:
                 scores = scores[inds]
                 boxes = boxes[inds, :]
 
+                result[path] = list()
                 for i in range(scores.shape[0]): 
                     x1, y1, x2, y2 = boxes[i, :].tolist()
                     w = x2 - x1; h = y2 - y1 
@@ -179,8 +180,7 @@ class Plugin:
                     x1 = (cx-s) / img.shape[1]; x2 = (cx+s) / img.shape[1] 
                     y1 = (cy-s) / img.shape[0]; y2 = (cy+s) / img.shape[0]
                     new_result = {"score": float(scores[i]), "bbox": [x1,y1,x2,y2]}
-                    try: result[path].append(new_result) 
-                    except: result[path] = list(); result[path].append(new_result) 
+                    result[path].append(new_result) 
                 self.interface.dialog.progressbar.update_progressbar((idx+1)/(len(paths)))
             except Exception as e: 
                 print(str(e)) 
@@ -222,6 +222,7 @@ class Plugin:
                 scores = scores[inds]
                 boxes = boxes[inds, :]
 
+                result[path] = list()
                 for i in range(scores.shape[0]): 
                     x1, y1, x2, y2 = boxes[i, :].tolist()
                     w = x2 - x1; h = y2 - y1 
@@ -230,8 +231,7 @@ class Plugin:
                     x1 = (cx-s) / img.shape[1]; x2 = (cx+s) / img.shape[1] 
                     y1 = (cy-s) / img.shape[0]; y2 = (cy+s) / img.shape[0]
                     new_result = {"score": float(scores[i]), "bbox": [x1,y1,x2,y2]}
-                    try: result[path].append(new_result) 
-                    except: result[path] = list(); result[path].append(new_result) 
+                    result[path].append(new_result) 
                 self.interface.dialog.progressbar.update_progressbar((idx+1)/(len(paths)))
             except Exception as e: 
                 print(str(e))  
@@ -241,4 +241,3 @@ class Plugin:
         self.interface.dialog.progressbar.update_progressbar(1.)
         self.dump_result(result) 
         return result 
-        

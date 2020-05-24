@@ -9,6 +9,9 @@ from tqdm import tqdm
 from time import time 
 from tkinter import Tk
 
+# Tools 
+from Tools import remove_similar_images as rm_sim_imgs 
+
 
 endFlag = False 
 threadList = list() 
@@ -45,6 +48,7 @@ class BuiltIns:
                 mouse_buttons.append(registered_button) 
         mouse_buttons = sorted(mouse_buttons, key=lambda i:i.zIndex, reverse=True) 
         if mouse_buttons[0].text == button.text: return True 
+        elif not click: return True
         else: return False 
 
     def unregister_button(self, button): 
@@ -121,7 +125,7 @@ class MenuTree:
         self.color = color
         self._x = 10 
         self.parentHeight = 30
-        self.childWidth = 200
+        self.childWidth = 250 
         self.childHeight = 50 
         self.winWidth = width 
         self.mouseHandler = mouseHandler 
@@ -154,6 +158,14 @@ class MenuTree:
                                         self.mouseHandler, onClick=self._func, 
                                         args={"parentName": parentName, "func": onClick, "args": args}, 
                                         color=self.color, border=1, border_color=(100,100,100), zIndex=9999)) 
+    
+    def exists(self, parentName, childName=None): 
+        if childName is None: 
+            return parentName in self.tree
+        else: 
+            for child in self.tree[parentName]["child"]: 
+                if child.text == childName: return True 
+            return False 
 
     def update_status(self): 
         x = self.mouseHandler.x 
@@ -188,29 +200,9 @@ class ProgressBar:
         self.color = color 
         self.progress = 0.
         self.starttime = time() 
+        self.eta = "--:--:--"
         self._w = 0 
         self._x = 0 
-
-    def construct_progressbar(self, mat): 
-        cv2.rectangle(mat, (self.pt1[0], self.pt1[1]+14), self.pt2, (100,100,100), 1) 
-        if self.progress > 0.: 
-            prog_width = max(int(round((self.pt2[0]-2 - self.pt1[0]-2) * self.progress)), 1)   
-            cv2.rectangle(mat, (self.pt1[0]+2, self.pt1[1]+16), 
-                        (self.pt1[0]+2+prog_width, self.pt2[1]-2), self.color, -1) 
-            duration = time() - self.starttime 
-            eta = (1.-self.progress) * duration / self.progress 
-            s = "%.2f%% - ETA %s " % (self.progress*100, self.fmt_time(eta)) 
-        else: 
-            if self._w < 50: self._w += 2 
-            else: self._x += 2
-            if self.pt1[0]+2+self._x + self._w >= self.pt2[0]-2: 
-                self._w -= self.pt1[0]+2+self._x + self._w - self.pt2[0]+4 
-                self._x += 2
-            if self.pt1[0]+2+self._x >= self.pt2[0] - 2: self._x = 0; self._w = 0
-            cv2.rectangle(mat, (self.pt1[0]+2+self._x, self.pt1[1]+16), 
-                        (self.pt1[0]+2+self._x+self._w, self.pt2[1]-2), self.color, -1) 
-            s = "Please wait."
-        cv2.putText(mat, s, (self.pt1[0], self.pt1[1]-3), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,200,200), 1)
 
     def fmt_time(self, dtime):
         if dtime <= 0: 
@@ -223,8 +215,29 @@ class ProgressBar:
             return "%d:%02d:%02d.%03d" % (int(dtime / 3600), int((dtime % 3600) / 60), int(dtime) % 60,
                                         int(dtime * 1000) % 1000)
 
+    def construct_progressbar(self, mat): 
+        cv2.rectangle(mat, (self.pt1[0], self.pt1[1]+14), self.pt2, (100,100,100), 1) 
+        if self.progress > 0.: 
+            prog_width = max(int(round((self.pt2[0]-2 - self.pt1[0]-2) * self.progress)), 1)   
+            cv2.rectangle(mat, (self.pt1[0]+2, self.pt1[1]+16), 
+                        (self.pt1[0]+2+prog_width, self.pt2[1]-2), self.color, -1) 
+            s = "%.2f%% - ETA %s " % (self.progress*100, self.eta) 
+        else: 
+            if self._w < 50: self._w += 2 
+            else: self._x += 2
+            if self.pt1[0]+2+self._x + self._w >= self.pt2[0]-2: 
+                self._w -= self.pt1[0]+2+self._x + self._w - self.pt2[0]+4 
+                self._x += 2
+            if self.pt1[0]+2+self._x >= self.pt2[0] - 2: self._x = 0; self._w = 0
+            cv2.rectangle(mat, (self.pt1[0]+2+self._x, self.pt1[1]+16), 
+                        (self.pt1[0]+2+self._x+self._w, self.pt2[1]-2), self.color, -1) 
+            s = "Please wait."
+        cv2.putText(mat, s, (self.pt1[0], self.pt1[1]-3), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,200,200), 1)
+
     def update_progressbar(self, progress): 
         self.progress = progress 
+        duration = time() - self.starttime 
+        self.eta = self.fmt_time((1.-self.progress) * duration / self.progress) 
 
 
 class Textbox: 
@@ -259,9 +272,12 @@ class Textbox:
 
     def _input_from_clipboard(self): 
         self.keyHandler.string_value = Tk().clipboard_get()
-        cv2.waitKey(40) 
         self.onFocus = True 
         self.button.onFocus = True 
+
+    def destroy(self): 
+        global __buildins__ 
+        __buildins__.unregister_button(self.button) 
 
 
 class Notifier: 
@@ -366,7 +382,9 @@ class Dialog:
             for button in self.buttons: 
                 button.destroy() 
         except: pass 
-        try: self.textbox.onFocus = False 
+        try: 
+            self.textbox.onFocus = False 
+            self.textbox.destroy() 
         except: pass 
         self.destroyFlag = True 
     
@@ -424,10 +442,11 @@ class KeyHandler:
 class ImageHandler: 
     def __init__(self): 
         self.image_paths = None 
+        self.path = None 
         self.iter = 0 
+        self.interval = 1 
         self.deleted = 0 
         self.img = None 
-        self._orig_img = None 
 
     def load_from_directory(self, dir_path, interface=None): 
         self.interface = interface 
@@ -482,14 +501,24 @@ class ImageHandler:
         except: return False 
 
     def get_orig_img(self): 
-        return self._orig_img  
+        if self._video_mode: 
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.iter*self.interval) 
+            _, img = self.cap.read() 
+            return img 
+        else: return cv2.imread(self.image_paths[self.iter]) 
 
     def get_frame(self, i): 
         backup_i = self.cap.get(cv2.CAP_PROP_POS_FRAMES) 
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, i) 
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, i*self.interval) 
         _, img = self.cap.read() 
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, backup_i) 
         return img 
+
+    def set_frame_interval(self, interval): 
+        # For video mode only. 
+        self.interval = interval 
+        self.image_paths = [path for i, path in enumerate(self.image_paths) if i % self.interval == 0] 
+        print(f"{len(self.image_paths)} frames left.") 
 
     def next(self, save_checkpoint=False): 
         global endFlag
@@ -500,11 +529,11 @@ class ImageHandler:
         if not self._video_mode: 
             self.img = cv2.imread(str(self.image_paths[self.iter])) 
         else: 
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.iter*self.interval)
             _, self.img = self.cap.read() 
         # Update iter count.  
         self.iter += 1 
         # Resize if oversized. 
-        self._orig_img = self.img.copy() 
         if self.img.shape[0] >= self.interface._winsize or self.img.shape[1] >= self.interface._winsize: 
             ratio = self.interface._winsize / max(self.img.shape) 
             self.img = cv2.resize(self.img, (int(self.img.shape[1]*ratio), int(self.img.shape[0]*ratio))) 
@@ -531,6 +560,13 @@ class ImageHandler:
         else: self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0) 
         self.iter = 0 
 
+    def remove_similar_images(self): 
+        toolThread = Thread("toolThread", self._remove_similar_images_thr) 
+        toolThread.start() 
+    
+    def _remove_similar_images_thr(self, nothing): 
+        tool = rm_sim_imgs.Tool(self.image_paths, self.interface, 10)
+        tool.run() 
 
 class Interface: 
     def __init__(self, refresh_rate=80): 
@@ -541,7 +577,6 @@ class Interface:
         self.dialog = None
         self.image_handler = ImageHandler() 
         self.crop_tool = Crop_Tool(self, self.image_handler) 
-        self.pluginManager = Plugins(self, self.image_handler, self.crop_tool) 
         self.mouseHandler = MouseHandler()
         cv2.setMouseCallback("Crop Image", self.mouseHandler.onMouseHandle) 
         self.menuTree = MenuTree(self._winsize, self.mouseHandler) 
@@ -551,8 +586,9 @@ class Interface:
         self.menuTree.addChild("File", "Exit", onClick=self.close) 
         self.menuTree.addParent("Edit") 
         self.menuTree.addChild("Edit", "Reset checkpoint", onClick=self.reset_checkpoint) 
-        self.menuTree.addParent("Plugins") 
-        self.menuTree.addChild("Plugins", "animeFace", onClick=self._load_plugin_thr, args=Plugins.ANIMEFACE)
+        self.menuTree.addChild("Edit", "Set frame interval (video)", onClick=self._set_frame_interval_thr)
+        self.menuTree.addParent("Tool") 
+        self.menuTree.addChild("Tool", "Remove similar images", onClick=self.image_handler.remove_similar_images)
         self.buttons = list() 
         self.buttons.append(Button(( 10,40), 70, 30, "Reset", self.mouseHandler, onClick=self.reset)) 
         self.buttons.append(Button((90,40), 80, 30, "Delete", self.mouseHandler, onClick=self.delete)) 
@@ -562,6 +598,7 @@ class Interface:
         self.buttons.append(Button((450,40), 120, 30, "Crop & Next", self.mouseHandler, onClick=self.next, args=True)) 
         self.notifier = Notifier() 
         self.notifier.new_notifier((590,10), 300, 100, "Notification", "Press ESC or File > Exit to exit.")
+        self.pluginManager = Plugins(self, self.image_handler, self.crop_tool) 
         self.dir_path = None 
 
     def _load_plugin_thr(self, pluginName): 
@@ -574,8 +611,8 @@ class Interface:
         status = self.pluginManager.importPlugin(pluginName) 
         self.dialog.destroyFlag = True 
         self.dialog = None 
-        msg = "Plugin import success." if type(status) is not str else status 
-        self.dialog = Dialog((int(self._winsize/2), int(self._winsize/2)), msg, self.mouseHandler) 
+        if type(status) is str: 
+            self.dialog = Dialog((int(self._winsize/2), int(self._winsize/2)), status, self.mouseHandler) 
 
     def _load_img_thr(self, video=False): 
         loadThread = Thread("loadThread", self._load_images_dialog, video) 
@@ -628,6 +665,22 @@ class Interface:
             self.next() 
             cv2.waitKey(30)
 
+    def _set_frame_interval_thr(self): 
+        setThread = Thread("setThread", self._set_frame_interval_dialog) 
+        setThread.start() 
+
+    def _set_frame_interval_dialog(self, nothing): 
+        global endFlag 
+        self.dialog = Dialog((int(self._winsize/2), int(self._winsize/2)), "Set video frame interval", 
+                             self.mouseHandler, Dialog.INPUT) 
+        while not endFlag: 
+            if self.dialog.textbox.onFocus: self.dialog.textbox._enter_input_mode() 
+            try: 
+                if self.dialog.destroyFlag: inter = int(self.dialog.textbox.value); self.dialog = None; break 
+            except: pass 
+        print(f"Interval {inter}")
+        self.image_handler.set_frame_interval(inter) 
+
     def reset_checkpoint(self): 
         try: 
             if self.image_handler.image_paths is not None: 
@@ -671,24 +724,26 @@ class Interface:
         try:  
             pt1 = (int((self._winsize-self.img.shape[1])/2), int((self._winsize-self.img.shape[0])/2)) 
             pt2 = (pt1[0] + self.img.shape[1], pt1[1] + self.img.shape[0])
-            mat[pt1[1]:pt2[1], pt1[0]:pt2[0]] = self.img 
+            mat[pt1[1]:pt2[1], pt1[0]:pt2[0]] = self.image_handler.img 
         except: pass  
 
+        # Show cursor coordinate and image path info. 
+        try: 
+            cv2.putText(mat, _format_coor(), (self._winsize-90, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,100), 1) 
+            cv2.putText(mat, self.image_handler.get_formatted_info(), (3, self._winsize-10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,100), 1) 
+        except: pass 
+
         # Show crop box. 
-        self.crop_tool.show_crop_box(mat, pt1, self.mouseHandler.x, self.mouseHandler.y, self.mouseHandler.click)
+        try: 
+            self.crop_tool.show_crop_box(mat, pt1, self.mouseHandler.x, self.mouseHandler.y, self.mouseHandler.click)
+        except: pass 
 
         # Show buttons. 
         try: 
             for button in self.buttons: 
                 button.update_status()
                 button.construct_button(mat) 
-        except: pass 
-
-        # Show cursor coordinate. 
-        try: 
-            cv2.putText(mat, _format_coor(), (self._winsize-90, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,100), 1) 
-            cv2.putText(mat, self.image_handler.get_formatted_info(), (3, self._winsize-10), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100,100,100), 1) 
         except: pass 
 
         # Show menuTree. 
@@ -799,11 +854,12 @@ class Crop_Tool:
 
         '''
         for i in bndboxes: 
-            if i not in self.bndboxes: self.bndboxes[i] = bndboxes[i] 
+            if i not in self.bndboxes and len(bndboxes[i]) > 0: 
+                self.bndboxes[i] = bndboxes[i] 
         print("Fed", len(bndboxes), "bndboxes.") 
         if self.path in self.bndboxes: 
             self._apply_bndbox()
-        else: print("Not in data.", self.path, [i for i in self.bndboxes]) 
+        else: print("Not in data.", self.path) 
 
     def _bnd_8_points(self): 
         self.points = list() 
@@ -978,6 +1034,7 @@ class Crop_Tool:
         processThread.start() 
 
     def _crop_all_bndboxes_thr(self, nothing): 
+        global endFlag 
         if len(self.bndboxes) < 1: 
             self.interface._info_dialog("Error: No bndboxes.") 
             return 
@@ -985,30 +1042,42 @@ class Crop_Tool:
         backup_path = self.path 
         backup_width = self.width 
         backup_height = self.height
+        backup_iter = self.imageHandler.iter 
         for idx, path in enumerate(self.bndboxes): 
-            self.path = path 
-            self.interface.dialog.progressbar.update_progressbar((idx+1)/(len(self.bndboxes))) 
-            output_dir = os.path.join(os.path.split(path)[0], "Output")  
-            if not os.path.exists(output_dir): os.makedirs(output_dir) 
-            if not self.imageHandler.is_video_mode(): img = cv2.imread(path) 
-            else: img = self.imageHandler.get_orig_img() 
-            self.width = img.shape[1] 
-            self.height = img.shape[0] 
-            for i, bnd in enumerate(self.bndboxes[path]): 
-                self._apply_bndbox(idx=i) 
-                im_path = os.path.join(output_dir, os.path.split(path)[-1].replace(".jpg", "")
-                                        .replace(".png", "")+"-"+str(i)+".jpg") 
-                cv2.imwrite(im_path, img[self.bnd[1]:self.bnd[3], self.bnd[0]:self.bnd[2]]) 
+            if endFlag: break 
+            try: 
+                self.imageHandler.iter = int(int(path.split("-")[-1]) / self.imageHandler.interval)   
+                self.path = path 
+                self.interface.dialog.progressbar.update_progressbar((idx+1)/(len(self.bndboxes))) 
+                output_dir = os.path.join(os.path.split(path)[0], "Output")  
+                if not os.path.exists(output_dir): os.makedirs(output_dir) 
+                if not self.imageHandler.is_video_mode(): img = cv2.imread(path) 
+                else: img = self.imageHandler.get_frame(self.imageHandler.iter) 
+                self.width = img.shape[1] 
+                self.height = img.shape[0] 
+                for i, bnd in enumerate(self.bndboxes[path]): 
+                    self._apply_bndbox(idx=i) 
+                    im_path = os.path.join(output_dir, os.path.split(path)[-1].replace(".jpg", "")
+                                            .replace(".png", "")+"-"+str(i)+".jpg") 
+                    cv2.imwrite(im_path, img[self.bnd[1]:self.bnd[3], self.bnd[0]:self.bnd[2]]) 
+            except Exception as e: print(e) 
         self.path = backup_path 
         self.width = backup_width 
         self.height = backup_height 
+        self.imageHandler.iter = backup_iter 
         self._apply_bndbox() 
         self.interface._info_dialog("Process completed.") 
 
 
 class Plugins: 
     
+    # Plugin IDs. 
     ANIMEFACE = 0 
+    LBPCASCADE_ANIMEFACE = 1
+
+    # Plugin names. 
+    plugin_name = {0: "animeFace", 
+                   1: "lbpcascade_animeface"}
 
     def __init__(self, interface, image_handler, crop_tool): 
         self.active = list() 
@@ -1016,6 +1085,12 @@ class Plugins:
         self.interface = interface 
         self.image_handler = image_handler 
         self.crop_tool = crop_tool 
+        # Link to Interface MenuTree. 
+        self.interface.menuTree.addParent("Plugins") 
+        self.interface.menuTree.addChild("Plugins", "animeFace", onClick=self.interface._load_plugin_thr, 
+                                         args=self.ANIMEFACE) 
+        self.interface.menuTree.addChild("Plugins", "lbpcascade_animeface", onClick=self.interface._load_plugin_thr, 
+                                         args=self.LBPCASCADE_ANIMEFACE) 
 
     def _plugin_func(self, func): 
         processThread = Thread("processThread", self._plugin_func_thr, func) 
@@ -1025,33 +1100,51 @@ class Plugins:
         value = func["func"](func["args"]) 
         self.interface.crop_tool.feed_bndboxes(value)
 
-    def importPlugin(self, plugin_name): 
+
+    def importPlugin(self, plugin_id): 
+
+        # Check if the plugin is imported before. 
         for plugin in self.active: 
-            if plugin.name == plugin_name: 
+            if plugin.name == self.plugin_name[plugin_id]: 
                 return "Plugin already imported."
-        if plugin_name == self.ANIMEFACE: 
-            if self.image_handler.image_paths is None: 
-                return "Error: No directory opened yet" 
-            sys.path.append("/animeFace") 
+        
+        # Check if a directory or video is opened or not. 
+        if self.image_handler.image_paths is None: 
+            return "Error: No directory opened yet" 
+
+        # Import plugin. 
+        # ==================
+        if plugin_id == self.ANIMEFACE:     
+            sys.path.append(os.path.join(os.getcwd(), "animeFace")) 
             import animeFace.plugin
             plugin = animeFace.plugin.Plugin(self.interface, self.image_handler)  
-            plugin.name = self.ANIMEFACE 
-            status = plugin.load(os.getcwd()) 
-            print("Load plugin:", status) 
-            self.active.append(plugin) 
-            self.interface.menuTree.addParent("animeFace") 
-            for func in plugin.funcs: 
-                self.interface.menuTree.addChild("animeFace", func["name"], onClick=self._plugin_func, 
-                                                 args=func)
-            if status: 
-                if len(self.active) == 1: self._add_output_functions()
-                return True 
-            else: return "Plugin import failed."
+            plugin.name = self.plugin_name[plugin_id] 
+        
+        elif plugin_id == self.LBPCASCADE_ANIMEFACE: 
+            sys.path.append(os.path.join(os.getcwd(), "lbpcascade_animeface"))  
+            import lbpcascade_animeface.plugin
+            plugin = lbpcascade_animeface.plugin.Plugin(self.interface, self.image_handler)  
+            plugin.name = self.plugin_name[plugin_id] 
+
         else: return "No such plugin."  
+        # ==================
+
+        status = plugin.load(os.getcwd()) 
+        print("Loaded plugin:", status) 
+        self.active.append(plugin) 
+        self.interface.menuTree.addParent(plugin.name) 
+        for func in plugin.funcs: 
+            self.interface.menuTree.addChild(plugin.name, func["name"], onClick=self._plugin_func, 
+                                                args=func)
+        if status: 
+            if len(self.active) == 1: self._add_output_functions()
+            return True 
+        else: return "Plugin import failed."
     
     def _add_output_functions(self): 
-        self.interface.menuTree.addParent("Output") 
-        self.interface.menuTree.addChild("Output", "Crop all bndboxes", onClick=self.crop_tool.crop_all_bndboxes) 
+        if not self.interface.menuTree.exists("Output"): 
+            self.interface.menuTree.addParent("Output") 
+            self.interface.menuTree.addChild("Output", "Crop all bndboxes", onClick=self.crop_tool.crop_all_bndboxes) 
     
     def close(self): 
         for plugin in self.active: 
